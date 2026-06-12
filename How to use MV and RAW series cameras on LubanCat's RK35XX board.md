@@ -23,10 +23,8 @@ We provide drivers for the Linux operating system (using LubanCat-5-BTB OS Debai
 | MV Series  | MV-MIPI-IMX264M  | Done  |
 | RAW Series  | RAW-MIPI-SC132M	  | Done  |
 
-In addition, the driver for the V-by-One HS connection mode has been finished on the Ubuntu system.
 
 ## Hardware Setup
-
 
 ### Connection of MV series camera and LubanCat-5-BTB
 The MIPI interface of the LuBanCat 5 BTB is 24-pin. It requires a 24-pin to 15-pin adapter board to be used together.
@@ -57,8 +55,9 @@ In addition, a compiled linux kernel installation package and Android image is p
 ## Upgrade LubanCat-5-BTB Debain  system
 
 ### Overview
-This section describes how to update the RK35xx system to support our camera modules.
-We provide a deb installation package that can be installed directly.
+This chapter describes how to update the RK35xx system to support our camera modules. We provide the official LubanCat-5-BTB image and a .deb installation package for direct installation.
+
+This chapter describes how to update the RK35xx system to support our camera modules. We provide the official LubanCat-5-BTB image and a .deb installation package for direct installation. Please note that our Debian package is built specifically for the official image [lubancat-rk3588-debian12-gnome-20260113_update.img](https://pan.baidu.com/s/19t8AZV9SYTdjn2uObBiSGA#list/path=%2F) (Extraction Code: hslu). Before using the dpkg command to install the .deb package, please verify your current operating system version.
 
 ### Using prebuilt Image and dtb file
 Using the compiled debain installation package
@@ -81,12 +80,20 @@ sudo reboot
 
 If the version does not match, it needs to be compiled from the source code.
 
-### Open the driver file
-After installing the Debian package, use the following command to open the access port to be used and the specific model of the driver file.
+### Modify the Device Tree Overlay Configuration File
+After installing the Debian package, you can dynamically enable a camera on any CAM interface by modifying the configuration file.
 
+Note: Each CAM interface supports only one camera type at a time.
+
+A system reboot is required for the changes to take effect.
+
+File Path:
+```
+/boot/uEnv/uEnv.txt
+```
+
+Example: Enabling the Veyecam on the CAM4 Interface.
 ```shell
-sudo vi /boot/uEnv/uEnv.txt
-
 # cam4
 
 #dtoverlay=/dtb/overlay/rk3588-lubancat-5io-cam4-imx415-3840x2160-15fps-overlay.dtbo
@@ -112,10 +119,112 @@ dtoverlay=/dtb/overlay/rk3588-lubancat-5io-cam4-mvcam-overlay.dtbo
 sudo reboot
 
 ```
-Let's take cam4 as an example. During the testing process, the port where cam4 is connected provides the best camera effect. Then, open the mv series driver files.
+### Device Node Description
+When all six CAM interfaces are enabled simultaneously, the corresponding device nodes are mapped as follows:
 
-Note: During the cam0 and cam1 testing process, there will be frame loss issues. It is not recommended to use them.
+| CAM num | media node | video node |
+| ------------ | ------------ | ------------ |
+| cam0 | /dev/media0 | /dev/video0 |
+| cam1 | /dev/media1 | /dev/video11 |
+| cam2 | /dev/media2 | /dev/video22 |
+| cam3 | /dev/media3 | /dev/video33 |
+| cam4 | /dev/media4 | /dev/video44 |
+| cam5 | /dev/media5 | /dev/video55 |
 
+Note: When 1 to 5 interfaces are enabled, the mapping between cameras and device nodes is not fixed. Please use the media-ctl command to check the actual mapping.
+
+Example: To check the camera corresponding to /dev/media1. Since the media-ctl command generates extensive output, you can quickly view the mapping by displaying only the first 20 and last 20 lines of the output.
+media-ctl -p -d /dev/media2 | head -n 20; media-ctl -p -d /dev/media2 | tail -n 20
+
+Output:
+```
+Media controller API version 6.1.99
+
+Media device information
+
+driver          rkcif
+
+model           rkcif-mipi-lvds2
+
+serial
+
+bus info        platform:rkcif-mipi-lvds2
+
+hw revision     0x0
+
+driver version  6.1.99
+
+Device topology
+
+     -entity 1: stream_cif_mipi_id0 (1 pad, 11 links)
+
+            type Node subtype V4L flags 0
+
+            device node name /dev/video22
+
+        pad0: Sink
+
+                <- "rockchip-mipi-csi2":1 [ENABLED]
+
+                <- "rockchip-mipi-csi2":2 []
+
+                <- "rockchip-mipi-csi2":3 []
+
+                <- "rockchip-mipi-csi2":4 []
+
+                -> "rkcif_tools_id0":0 []
+
+                -> "rkcif_tools_id1":0 []
+
+                -> "rkcif_tools_id2":0 [ENABLED]
+
+          -entity 58: rockchip-csi2-dphy1 (2 pads, 2 links)
+
+             type V4L2 subdev subtype Unknown flags 0
+
+             device node name /dev/v4l-subdev1
+
+        pad0: Sink
+
+                [fmt:UYVY8_2X8/1920x1080@10000/300000 field:none]
+
+                <- "m00_b_veyecam2m 2-003b":0 [ENABLED]
+
+        pad1: Source
+
+                -> "rockchip-mipi-csi2":0 [ENABLED]
+
+          -entity 63: m00_b_veyecam2m 2-003b (1 pad, 1 link)
+
+             type V4L2 subdev subtype Sensor flags 0
+
+             device node name /dev/v4l-subdev2
+
+        pad0: Source
+
+                [fmt:UYVY8_2X8/1920x1080@10000/300000 field:none]
+
+                -> "rockchip-csi2-dphy1":0 [ENABLED]
+```
+/dev/media2 corresponds to /dev/video22 and m00_b_veyecam2m 2-003b. The digit 2 in m00_b_veyecam2m 2-003b represents the I2C bus ID. The table below lists the I2C bus IDs assigned to each CAM interface.
+| CAM num | I2C node |
+| ------------ | ------------ |
+| cam0 | i2c0 | 
+| cam1 | i2c1 |
+| cam2 | i2c2 |
+| cam3 | i2c3 |
+| cam4 | i2c4 |
+| cam5 | i2c5 |
+
+Based on this, it can be determined that m00_b_gxcam 2-003b is the camera entity name for the CAM2 interface.
+### Hardware Interface Testing and Signal Optimization Recommendations
+Through hardware testing, it has been observed that using the CAM0 and CAM1 interfaces may result in frame loss during data transmission. To ensure optimal image acquisition quality, it is recommended to prioritize the use of other available ports for camera connection and evaluation testing.
+
+- Root Cause Analysis:
+In the current evaluation setup, an additional 24P-to-15P adapter board is used between the LubanCat-5-BTB and the camera. This adapter board introduces MIPI signal trace stubs, which can cause signal reflections and subsequently degrade MIPI signal integrity.
+
+- Design Recommendations:
+For formal product design phases, it is recommended to eliminate this adapter board by directly integrating the carrier board design with the camera interface specifications.
 ## Check system status
 ### Whether the camera is correctly recognized
 After system update, reboot the main board.
@@ -447,9 +556,8 @@ We provide shell scripts to configure the parameters.
 [mv_mipi_i2c.sh user guide](http://wiki.veye.cc/index.php/Mv_mipi_i2c.sh_user_guide)
 
 ##  Compile drivers and dtb from source code
-- RK356x
 
-https://github.com/veyeimaging/rk35xx_LubanCat/blob/main/linux/drivers/rk356x
+https://github.com/veyeimaging/rk35xx_LubanCat/blob/main/linux/
 
 ## References
 
